@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>TDR/TDT计算测试</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .test-section {
+      background: white;
+      padding: 20px;
+      margin-bottom: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #2196F3;
+    }
+    h2 {
+      color: #333;
+      border-bottom: 2px solid #2196F3;
+      padding-bottom: 10px;
+    }
+    .result {
+      background: #f8f9fa;
+      padding: 15px;
+      border-radius: 4px;
+      margin-top: 10px;
+      font-family: monospace;
+      white-space: pre-wrap;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .success { color: #4CAF50; }
+    .error { color: #F44336; }
+    button {
+      background: #2196F3;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      margin: 5px;
+    }
+    button:hover {
+      background: #1976D2;
+    }
+    .form-group {
+      margin-bottom: 15px;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    input, select {
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      width: 200px;
+    }
+    #chart {
+      width: 100%;
+      height: 400px;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>SParaViewer - TDR/TDT计算测试</h1>
+
+  <div class="test-section">
+    <h2>1. 参数设置</h2>
+    <div class="form-group">
+      <label>计算类型：</label>
+      <select id="tdr-type">
+        <option value="tdr">TDR (时域反射)</option>
+        <option value="tdt">TDT (时域传输)</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>上升时间 (ps)：</label>
+      <input type="number" id="rise-time" value="100" min="1" max="1000">
+    </div>
+    <div class="form-group">
+      <label>参考阻抗 (Ω)：</label>
+      <input type="number" id="impedance" value="50" min="1" max="1000">
+    </div>
+    <button onclick="testTDR()">计算TDR/TDT</button>
+  </div>
+
+  <div class="test-section">
+    <h2>2. 计算结果</h2>
+    <div id="calc-result" class="result"></div>
+  </div>
+
+  <div class="test-section">
+    <h2>3. 时域波形</h2>
+    <div id="chart"></div>
+  </div>
+
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <script>
+    // TDR计算函数
+    function calculateTDR(sParams, frequencies, riseTime, impedance, type) {
+      // 将S参数转换为时域响应
+      const numPoints = frequencies.length;
+      const dt = 1 / (2 * frequencies[numPoints - 1]);
+      const timePoints = Array.from({length: numPoints}, (_, i) => i * dt);
+
+      // 计算阶跃响应
+      const stepResponse = new Array(numPoints).fill(0);
+
+      for (let i = 0; i < numPoints; i++) {
+        let sum = 0;
+        for (let j = 0; j < numPoints; j++) {
+          const freq = frequencies[j];
+          const omega = 2 * Math.PI * freq;
+          const t = timePoints[i];
+
+          // S11参数（反射）
+          const s11 = sParams['S11'][j];
+          const mag = Math.sqrt(s11.real ** 2 + s11.imag ** 2);
+          const phase = Math.atan2(s11.imag, s11.real);
+
+          // 阶跃响应积分
+          if (type === 'tdr') {
+            sum += mag * Math.cos(omega * t + phase) / omega;
+          } else {
+            // TDT使用S21
+            const s21 = sParams['S21'][j];
+            const mag21 = Math.sqrt(s21.real ** 2 + s21.imag ** 2);
+            const phase21 = Math.atan2(s21.imag, s21.real);
+            sum += mag21 * Math.cos(omega * t + phase21) / omega;
+          }
+        }
+        stepResponse[i] = sum * 2 / numPoints;
+      }
+
+      // 应用上升时间滤波
+      const riseTimeSamples = Math.ceil(riseTime / (dt * 1e12));
+      const filteredResponse = applyRiseTimeFilter(stepResponse, riseTimeSamples);
+
+      // 计算阻抗
+      const impedanceResponse = filteredResponse.map(v => {
+        if (type === 'tdr') {
+          return impedance * (1 + v) / (1 - v);
+        } else {
+          return v;
+        }
+      });
+
+      return {
+        time: timePoints,
+        response: type === 'tdr' ? impedanceResponse : filteredResponse,
+        raw: filteredResponse
+      };
+    }
+
+    // 上升时间滤波
+    function applyRiseTimeFilter(signal, riseTimeSamples) {
+      const filtered = new Array(signal.length).fill(0);
+      const kernelSize = Math.max(1, riseTimeSamples);
+
+      for (let i = 0; i < signal.length; i++) {
+        let sum = 0;
+        let count = 0;
+        for (let j = Math.max(0, i - kernelSize); j <= Math.min(signal.length - 1, i + kernelSize); j++) {
+          sum += signal[j];
+          count++;
+        }
+        filtered[i] = sum / count;
+      }
+
+      return filtered;
+    }
+
+    // 测试TDR计算
+    function testTDR() {
+      const tdrType = document.getElementById('tdr-type').value;
+      const riseTime = parseFloat(document.getElementById('rise-time').value);
+      const impedance = parseFloat(document.getElementById('impedance').value);
+
+      // 使用示例S参数数据
+      const sampleSParams = {
+        'S11': Array.from({length: 100}, (_, i) => ({
+          real: 0.8 * Math.exp(-i / 50) * Math.cos(2 * Math.PI * i / 20),
+          imag: 0.8 * Math.exp(-i / 50) * Math.sin(2 * Math.PI * i / 20)
+        })),
+        'S21': Array.from({length: 100}, (_, i) => ({
+          real: 0.2 * Math.exp(-i / 100),
+          imag: 0.1 * Math.sin(2 * Math.PI * i / 30)
+        }))
+      };
+
+      const frequencies = Array.from({length: 100}, (_, i) => (i + 1) * 1e9); // 1-100 GHz
+
+      try {
+        const result = calculateTDR(sampleSParams, frequencies, riseTime, impedance, tdrType);
+
+        // 显示结果
+        let html = `<span class="success">✓ 计算成功</span>\n\n`;
+        html += `计算类型: ${tdrType.toUpperCase()}\n`;
+        html += `上升时间: ${riseTime} ps\n`;
+        html += `参考阻抗: ${impedance} Ω\n`;
+        html += `数据点数: ${result.time.length}\n`;
+        html += `时间范围: 0 ~ ${(result.time[result.time.length - 1] * 1e12).toFixed(2)} ps\n\n`;
+
+        if (tdrType === 'tdr') {
+          html += `阻抗范围: ${Math.min(...result.response).toFixed(2)} ~ ${Math.max(...result.response).toFixed(2)} Ω\n`;
+        } else {
+          html += `响应范围: ${Math.min(...result.response).toFixed(4)} ~ ${Math.max(...result.response).toFixed(4)}\n`;
+        }
+
+        document.getElementById('calc-result').innerHTML = html;
+
+        // 绘制图表
+        const trace = {
+          x: result.time.map(t => t * 1e12), // 转换为ps
+          y: result.response,
+          type: 'scatter',
+          mode: 'lines',
+          name: tdrType.toUpperCase()
+        };
+
+        const layout = {
+          title: `${tdrType.toUpperCase()} 响应`,
+          xaxis: {
+            title: '时间 (ps)',
+            showgrid: true
+          },
+          yaxis: {
+            title: tdrType === 'tdr' ? '阻抗 (Ω)' : '响应幅度',
+            showgrid: true
+          },
+          margin: { t: 40, r: 20, b: 50, l: 60 }
+        };
+
+        Plotly.newPlot('chart', [trace], layout, { responsive: true });
+
+      } catch (error) {
+        document.getElementById('calc-result').innerHTML =
+          `<span class="error">计算失败: ${error.message}</span>`;
+      }
+    }
+
+    // 页面加载时自动测试
+    window.onload = function() {
+      testTDR();
+    };
+  </script>
+</body>
+</html>
