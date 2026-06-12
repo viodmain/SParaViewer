@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>Touchstone解析器测试</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .test-section {
+      background: white;
+      padding: 20px;
+      margin-bottom: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #2196F3;
+    }
+    h2 {
+      color: #333;
+      border-bottom: 2px solid #2196F3;
+      padding-bottom: 10px;
+    }
+    .result {
+      background: #f8f9fa;
+      padding: 15px;
+      border-radius: 4px;
+      margin-top: 10px;
+      font-family: monospace;
+      white-space: pre-wrap;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .success { color: #4CAF50; }
+    .error { color: #F44336; }
+    button {
+      background: #2196F3;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      margin: 5px;
+    }
+    button:hover {
+      background: #1976D2;
+    }
+    #file-input {
+      margin: 10px 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>SParaViewer - Touchstone解析器测试</h1>
+
+  <div class="test-section">
+    <h2>1. 文件上传测试</h2>
+    <p>选择S参数文件进行解析测试：</p>
+    <input type="file" id="file-input" accept=".s1p,.s2p,.s3p,.s4p,.s5p,.s6p,.s7p,.s8p,.s9p,.s10p">
+    <button onclick="testFileUpload()">解析文件</button>
+    <div id="upload-result" class="result"></div>
+  </div>
+
+  <div class="test-section">
+    <h2>2. 示例数据测试</h2>
+    <p>使用内置示例数据测试解析器：</p>
+    <button onclick="testSampleS2P()">测试S2P文件</button>
+    <button onclick="testSampleS4P()">测试S4P文件</button>
+    <div id="sample-result" class="result"></div>
+  </div>
+
+  <div class="test-section">
+    <h2>3. 解析结果</h2>
+    <div id="parse-result" class="result"></div>
+  </div>
+
+  <script>
+    // 导入解析器（从app.js中提取）
+    function parseTouchstone(content, filename) {
+      const lines = content.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+
+      // 从文件名推断端口数
+      const portMatch = filename.match(/\.s(\d+)p$/i);
+      const numPorts = portMatch ? parseInt(portMatch[1]) : 1;
+
+      // 解析选项行
+      let optionLine = '';
+      let dataStartIndex = 0;
+
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].startsWith('!')) {
+          continue;
+        }
+        if (lines[i].startsWith('#')) {
+          optionLine = lines[i];
+          dataStartIndex = i + 1;
+          break;
+        }
+      }
+
+      // 解析选项
+      const options = parseOptionLine(optionLine);
+
+      // 解析数据
+      const frequencies = [];
+      const sParams = {};
+
+      // 初始化S参数矩阵
+      for (let i = 1; i <= numPorts; i++) {
+        for (let j = 1; j <= numPorts; j++) {
+          sParams[`S${i}${j}`] = [];
+        }
+      }
+
+      // 解析数据行
+      for (let i = dataStartIndex; i < lines.length; i++) {
+        const line = lines[i];
+        if (line.startsWith('!') || line.startsWith('#')) {
+          continue;
+        }
+
+        const values = line.split(/\s+/).map(Number).filter(v => !isNaN(v));
+        if (values.length < 1 + numPorts * numPorts * 2) {
+          continue;
+        }
+
+        const freq = values[0];
+        frequencies.push(freq);
+
+        let idx = 1;
+        for (let i = 1; i <= numPorts; i++) {
+          for (let j = 1; j <= numPorts; j++) {
+            const real = values[idx++];
+            const imag = values[idx++];
+            const key = `S${i}${j}`;
+            if (sParams[key]) {
+              sParams[key].push({ real, imag });
+            }
+          }
+        }
+      }
+
+      const freqMultiplier = getFrequencyMultiplier(options.freqUnit);
+      const normalizedFrequencies = frequencies.map(f => f * freqMultiplier);
+
+      return {
+        numPorts,
+        options,
+        frequencies: normalizedFrequencies,
+        sParams,
+        raw: {
+          frequencies,
+          optionLine
+        }
+      };
+    }
+
+    function parseOptionLine(optionLine) {
+      const defaults = {
+        freqUnit: 'GHz',
+        paramType: 'S',
+        format: 'MA',
+        resistance: 50
+      };
+
+      if (!optionLine) {
+        return defaults;
+      }
+
+      const parts = optionLine.replace('#', '').trim().split(/\s+/);
+      const options = { ...defaults };
+
+      for (const part of parts) {
+        const upper = part.toUpperCase();
+        if (['HZ', 'KHZ', 'MHZ', 'GHZ'].includes(upper)) {
+          options.freqUnit = upper;
+        } else if (['S', 'Y', 'Z', 'G', 'H'].includes(upper)) {
+          options.paramType = upper;
+        } else if (['MA', 'DB', 'RI'].includes(upper)) {
+          options.format = upper;
+        } else if (upper === 'R') {
+          const idx = parts.indexOf(part);
+          if (idx < parts.length - 1) {
+            options.resistance = parseFloat(parts[idx + 1]) || 50;
+          }
+        }
+      }
+
+      return options;
+    }
+
+    function getFrequencyMultiplier(unit) {
+      switch (unit.toUpperCase()) {
+        case 'HZ': return 1;
+        case 'KHZ': return 1e3;
+        case 'MHZ': return 1e6;
+        case 'GHZ': return 1e9;
+        default: return 1e9;
+      }
+    }
+
+    // 测试函数
+    function testFileUpload() {
+      const fileInput = document.getElementById('file-input');
+      const file = fileInput.files[0];
+
+      if (!file) {
+        alert('请先选择文件');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const result = parseTouchstone(e.target.result, file.name);
+          displayResult('upload-result', result, file.name);
+        } catch (error) {
+          document.getElementById('upload-result').innerHTML =
+            `<span class="error">解析失败: ${error.message}</span>`;
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function testSampleS2P() {
+      const sampleData = `! 2-port S-parameter data
+# GHz S MA R 50
+! freq       S11                  S21                  S12                  S22
+1.000000     0.894    -35.7       0.108     59.3       0.108     59.3       0.894    -35.7
+2.000000     0.789    -71.4       0.216     18.6       0.216     18.6       0.789    -71.4
+3.000000     0.684   -107.1       0.324    -22.1       0.324    -22.1       0.684   -107.1
+4.000000     0.579   -142.8       0.432    -62.8       0.432    -62.8       0.579   -142.8
+5.000000     0.474   -178.5       0.540   -103.5       0.540   -103.5       0.474   -178.5`;
+
+      try {
+        const result = parseTouchstone(sampleData, 'test.s2p');
+        displayResult('sample-result', result, 'test.s2p');
+      } catch (error) {
+        document.getElementById('sample-result').innerHTML =
+          `<span class="error">解析失败: ${error.message}</span>`;
+      }
+    }
+
+    function testSampleS4P() {
+      const sampleData = `! 4-port S-parameter data
+# GHz S MA R 50
+! freq       S11                  S21                  S31                  S41                  S12                  S22                  S32                  S42                  S13                  S23                  S33                  S43                  S14                  S24                  S34                  S44
+1.000000     0.894    -35.7       0.108     59.3       0.054     90.0       0.027    120.0       0.108     59.3       0.894    -35.7       0.054     90.0       0.027    120.0       0.054     90.0       0.054     90.0       0.894    -35.7       0.108     59.3       0.027    120.0       0.027    120.0       0.108     59.3       0.894    -35.7
+2.000000     0.789    -71.4       0.216     18.6       0.108     45.0       0.054     90.0       0.216     18.6       0.789    -71.4       0.108     45.0       0.054     90.0       0.108     45.0       0.108     45.0       0.789    -71.4       0.216     18.6       0.054     90.0       0.054     90.0       0.216     18.6       0.789    -71.4`;
+
+      try {
+        const result = parseTouchstone(sampleData, 'test.s4p');
+        displayResult('sample-result', result, 'test.s4p');
+      } catch (error) {
+        document.getElementById('sample-result').innerHTML =
+          `<span class="error">解析失败: ${error.message}</span>`;
+      }
+    }
+
+    function displayResult(elementId, result, filename) {
+      const element = document.getElementById(elementId);
+
+      let html = `<span class="success">✓ 解析成功</span>\n\n`;
+      html += `文件名: ${filename}\n`;
+      html += `端口数: ${result.numPorts}\n`;
+      html += `选项行: ${result.raw.optionLine}\n`;
+      html += `频率单位: ${result.options.freqUnit}\n`;
+      html += `参数类型: ${result.options.paramType}\n`;
+      html += `数据格式: ${result.options.format}\n`;
+      html += `参考阻抗: ${result.options.resistance} Ω\n`;
+      html += `数据点数: ${result.frequencies.length}\n\n`;
+      html += `S参数列表:\n`;
+
+      for (const [key, values] of Object.entries(result.sParams)) {
+        html += `  ${key}: ${values.length} 个数据点\n`;
+      }
+
+      html += `\n前3个数据点:\n`;
+      for (let i = 0; i < Math.min(3, result.frequencies.length); i++) {
+        html += `  频率: ${(result.frequencies[i] / 1e9).toFixed(2)} GHz\n`;
+        for (const [key, values] of Object.entries(result.sParams)) {
+          if (values[i]) {
+            const mag = Math.sqrt(values[i].real ** 2 + values[i].imag ** 2);
+            const phase = Math.atan2(values[i].imag, values[i].real) * 180 / Math.PI;
+            html += `    ${key}: ${values[i].real.toFixed(4)} + j${values[i].imag.toFixed(4)} (|S|=${mag.toFixed(4)}, ∠${phase.toFixed(1)}°)\n`;
+          }
+        }
+      }
+
+      element.innerHTML = html;
+    }
+  </script>
+</body>
+</html>

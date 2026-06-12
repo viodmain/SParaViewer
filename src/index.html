@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SParaViewer - S参数后处理软件</title>
+  <link rel="stylesheet" href="css/main.css">
+  <link rel="stylesheet" href="css/components.css">
+</head>
+<body>
+  <!-- Setting Bar -->
+  <header class="setting-bar">
+    <div class="setting-bar__left">
+      <h1 class="app-title">SParaViewer</h1>
+      <div class="file-controls">
+        <button id="btn-open" class="btn btn--primary">
+          <span class="icon">📂</span> 打开文件
+        </button>
+        <button id="btn-export" class="btn btn--secondary" disabled>
+          <span class="icon">💾</span> 导出图表
+        </button>
+      </div>
+    </div>
+    <div class="setting-bar__right">
+      <div class="theme-toggle">
+        <button id="btn-theme" class="btn btn--icon" title="切换主题">🌙</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="main-content">
+    <!-- Explore Panel -->
+    <aside class="explore-panel">
+      <div class="panel-header">
+        <h2>Explore</h2>
+        <button id="btn-refresh" class="btn btn--icon" title="刷新">🔄</button>
+      </div>
+      <div class="file-tree" id="file-tree">
+        <div class="file-tree__empty">
+          <p>暂无文件</p>
+          <p class="hint">点击"打开文件"添加S参数文件</p>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Center Area -->
+    <div class="center-area">
+      <!-- Plot Area -->
+      <section class="plot-area">
+        <div class="plot-header">
+          <div class="plot-tabs" id="plot-tabs">
+            <button class="tab active" data-tab="magnitude">幅度</button>
+            <button class="tab" data-tab="phase">相位</button>
+            <button class="tab" data-tab="smith">Smith圆图</button>
+            <button class="tab" data-tab="vswr">VSWR</button>
+          </div>
+          <div class="plot-controls">
+            <select id="plot-scale" class="select">
+              <option value="linear">线性</option>
+              <option value="log">对数</option>
+              <option value="dB">dB</option>
+            </select>
+          </div>
+        </div>
+        <div class="plot-container" id="plot-container">
+          <div class="plot-placeholder">
+            <p>请打开S参数文件开始分析</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Bottom Panels -->
+      <div class="bottom-panels">
+        <!-- SNP Port Mapping -->
+        <section class="panel port-mapping-panel">
+          <div class="panel-header">
+            <h2>SNP Port Mapping</h2>
+          </div>
+          <div class="panel-content" id="port-mapping">
+            <p class="placeholder">加载文件后显示端口映射</p>
+          </div>
+        </section>
+
+        <!-- TDR Calculate -->
+        <section class="panel tdr-panel">
+          <div class="panel-header">
+            <h2>TDR/TDT Calculate</h2>
+          </div>
+          <div class="panel-content" id="tdr-calculate">
+            <div class="tdr-controls">
+              <div class="form-group">
+                <label>计算类型</label>
+                <select id="tdr-type" class="select">
+                  <option value="tdr">TDR (时域反射)</option>
+                  <option value="tdt">TDT (时域传输)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>上升时间 (ps)</label>
+                <input type="number" id="rise-time" class="input" value="100" min="1" max="1000">
+              </div>
+              <div class="form-group">
+                <label>阻抗 (Ω)</label>
+                <input type="number" id="impedance" class="input" value="50" min="1" max="1000">
+              </div>
+              <button id="btn-calculate-tdr" class="btn btn--primary" disabled>
+                计算
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Other Option -->
+        <section class="panel other-panel">
+          <div class="panel-header">
+            <h2>Other Option</h2>
+          </div>
+          <div class="panel-content" id="other-option">
+            <p class="placeholder">预留功能区域</p>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <!-- Info Bar -->
+  <footer class="info-bar">
+    <div class="info-bar__left">
+      <span id="status-text">就绪</span>
+    </div>
+    <div class="info-bar__right">
+      <span id="file-info">未加载文件</span>
+      <span id="memory-usage">内存: --</span>
+    </div>
+  </footer>
+
+  <!-- Hidden file input -->
+  <input type="file" id="file-input" accept=".s1p,.s2p,.s3p,.s4p,.s5p,.s6p,.s7p,.s8p,.s9p,.s10p" multiple style="display: none">
+
+  <!-- Scripts -->
+  <script>
+    // 动态加载Plotly.js
+    if (typeof require !== 'undefined') {
+      // Electron环境
+      window.Plotly = require('plotly.js-dist-min');
+    }
+  </script>
+  <script src="js/touchstone-parser.js"></script>
+  <script src="js/tdr-calculator.js"></script>
+  <script src="js/smith-chart.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

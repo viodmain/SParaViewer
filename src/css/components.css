@@ -1,0 +1,261 @@
+/* SParaViewer 组件样式 */
+
+/* File Tree Items */
+.file-tree__item {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  transition: background-color 0.2s;
+}
+
+.file-tree__item:hover {
+  background-color: var(--bg-hover);
+}
+
+.file-tree__item.active {
+  background-color: var(--color-primary);
+  color: var(--text-inverse);
+}
+
+.file-tree__item .icon {
+  font-size: 14px;
+}
+
+.file-tree__item .name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-tree__item .ports {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.file-tree__item.active .ports {
+  color: rgba(255,255,255,0.7);
+}
+
+/* Port Mapping Table */
+.port-mapping-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.port-mapping-table th,
+.port-mapping-table td {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: 1px solid var(--border-color);
+  text-align: center;
+}
+
+.port-mapping-table th {
+  background-color: var(--bg-secondary);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.port-mapping-table td {
+  color: var(--text-secondary);
+}
+
+.port-mapping-table tr:hover td {
+  background-color: var(--bg-hover);
+}
+
+/* Parameter List */
+.param-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+}
+
+.param-tag {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background-color: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.param-tag:hover {
+  background-color: var(--color-primary);
+  color: var(--text-inverse);
+}
+
+.param-tag.active {
+  background-color: var(--color-primary);
+  color: var(--text-inverse);
+}
+
+/* Progress Bar */
+.progress-bar {
+  height: 4px;
+  background-color: var(--bg-secondary);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-bar__fill {
+  height: 100%;
+  background-color: var(--color-primary);
+  transition: width 0.3s ease;
+}
+
+/* Tooltip */
+.tooltip {
+  position: absolute;
+  background-color: var(--text-primary);
+  color: var(--text-inverse);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  pointer-events: none;
+  z-index: 1000;
+  white-space: nowrap;
+}
+
+/* Toast Notifications */
+.toast-container {
+  position: fixed;
+  top: calc(var(--setting-bar-height) + var(--spacing-md));
+  right: var(--spacing-md);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.toast {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--radius-md);
+  color: var(--text-inverse);
+  font-size: 13px;
+  box-shadow: var(--shadow-lg);
+  animation: slideIn 0.3s ease;
+}
+
+.toast--success {
+  background-color: var(--color-success);
+}
+
+.toast--error {
+  background-color: var(--color-danger);
+}
+
+.toast--warning {
+  background-color: var(--color-warning);
+}
+
+.toast--info {
+  background-color: var(--color-info);
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* Loading Spinner */
+.spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid var(--border-color);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Dialog/Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  background-color: var(--bg-panel);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  min-width: 400px;
+  max-width: 600px;
+  max-height: 80vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal__header {
+  padding: var(--spacing-md);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.modal__header h3 {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.modal__body {
+  padding: var(--spacing-md);
+  overflow-y: auto;
+}
+
+.modal__footer {
+  padding: var(--spacing-md);
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-sm);
+}
+
+/* Responsive */
+@media (max-width: 1200px) {
+  .bottom-panels {
+    flex-wrap: wrap;
+    height: auto;
+  }
+
+  .panel {
+    min-width: 200px;
+  }
+}
+
+@media (max-width: 900px) {
+  .explore-panel {
+    width: 200px;
+  }
+}
+
+@media (max-width: 768px) {
+  .explore-panel {
+    display: none;
+  }
+}
