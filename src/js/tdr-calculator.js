@@ -148,7 +148,7 @@ class TDRCalculator {
         const sincValue = omega * t > 0 ? Math.sin(omega * t) / (omega * t) : 1;
 
         // 应用上升时间滤波
-        const riseTimeEffect = Math.exp(-(omega * riseTime / 2) ** 2);
+        const riseTimeEffect = Math.exp(-Math.pow(omega * riseTime / 2, 2));
 
         sum += mag * Math.cos(phase) * sincValue * riseTimeEffect * window[j];
       }

@@ -104,9 +104,9 @@ ipcMain.handle('dialog:saveFile', async (event, options) => {
 });
 
 // IPC 处理：写入文件
-ipcMain.handle('file:write', async (event, filePath, content) => {
+ipcMain.handle('file:write', async (event, filePath, content, encoding) => {
   try {
-    fs.writeFileSync(filePath, content);
+    fs.writeFileSync(filePath, content, encoding || 'utf-8');
     return { success: true };
   } catch (error) {
     return { success: false, error: error.message };

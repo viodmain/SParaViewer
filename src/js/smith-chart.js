@@ -20,14 +20,18 @@ class SmithChart {
     const {
       showImpedanceCircles = true,
       showAdmittanceCircles = true,
-      showReactanceCircles = true,
-      width = 800,
-      height = 600
+      showReactanceCircles = true
     } = options;
+
+    // 自适应容器大小
+    const rect = this.container.getBoundingClientRect();
+    const width = Math.max(rect.width, 300);
+    const height = Math.max(rect.height, 200);
 
     // 清空之前的图形
     this.shapes = [];
     this.annotations = [];
+    this.isDark = document.documentElement.getAttribute('data-theme') === 'dark';
 
     // 绘制背景圆
     this.drawBackgroundCircles(showImpedanceCircles, showAdmittanceCircles, showReactanceCircles);
@@ -43,27 +47,34 @@ class SmithChart {
       line: { width: 2 }
     }));
 
-    // 布局配置
+    // 布局配置（根据当前主题适配）
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const textColor = isDark ? '#cccccc' : '#333333';
+    const gridColor = isDark ? '#3c3c3c' : '#e0e0e0';
+    const bgColor = isDark ? '#1e1e1e' : '#ffffff';
+
     const layout = {
       title: {
-        text: 'Smith圆图',
-        font: { size: 16 }
+        text: 'Smith Chart',
+        font: { size: 16, color: textColor }
       },
       xaxis: {
-        title: '实部 (Γr)',
+        title: { text: 'Real (Γr)', font: { color: textColor } },
         range: [-1.15, 1.15],
         showgrid: false,
         zeroline: true,
-        zerolinecolor: '#999',
+        zerolinecolor: gridColor,
         scaleanchor: 'y',
-        scaleratio: 1
+        scaleratio: 1,
+        color: textColor
       },
       yaxis: {
-        title: '虚部 (Γi)',
+        title: { text: 'Imag (Γi)', font: { color: textColor } },
         range: [-1.15, 1.15],
         showgrid: false,
         zeroline: true,
-        zerolinecolor: '#999'
+        zerolinecolor: gridColor,
+        color: textColor
       },
       margin: { t: 50, r: 30, b: 50, l: 50 },
       showlegend: true,
@@ -71,14 +82,15 @@ class SmithChart {
         x: 1.05,
         y: 1,
         xanchor: 'left',
-        yanchor: 'top'
+        yanchor: 'top',
+        font: { color: textColor }
       },
       shapes: this.shapes,
       annotations: this.annotations,
       width,
       height,
-      plot_bgcolor: '#fafafa',
-      paper_bgcolor: '#ffffff'
+      plot_bgcolor: bgColor,
+      paper_bgcolor: bgColor
     };
 
     const config = {
@@ -88,7 +100,9 @@ class SmithChart {
       displaylogo: false
     };
 
-    Plotly.newPlot(this.container, plotTraces, layout, config);
+    Plotly.newPlot(this.container, plotTraces, layout, config).then(() => {
+      Plotly.Plots.resize(this.container);
+    });
   }
 
   /**
@@ -96,6 +110,8 @@ class SmithChart {
    */
   drawBackgroundCircles(showImpedance, showAdmittance, showReactance) {
     // 外圆（单位圆）
+    const circleColor = this.isDark ? '#5a5a5a' : '#333333';
+    const axisColor = this.isDark ? '#4e4e4e' : '#666666';
     this.shapes.push({
       type: 'circle',
       xref: 'x',
@@ -104,7 +120,7 @@ class SmithChart {
       y0: -1,
       x1: 1,
       y1: 1,
-      line: { color: '#333', width: 2 },
+      line: { color: circleColor, width: 2 },
       fillcolor: 'transparent'
     });
 
@@ -117,7 +133,7 @@ class SmithChart {
       y0: 0,
       x1: 1,
       y1: 0,
-      line: { color: '#666', width: 1 }
+      line: { color: axisColor, width: 1 }
     });
 
     if (showImpedance) {
@@ -134,7 +150,7 @@ class SmithChart {
           y0: -radius,
           x1: center + radius,
           y1: radius,
-          line: { color: '#2196F3', width: 1, dash: 'dot' },
+          line: { color: '#569cd6', width: 1, dash: 'dot' },
           fillcolor: 'transparent'
         });
 
@@ -144,7 +160,7 @@ class SmithChart {
           y: 0,
           text: `r=${r}`,
           showarrow: false,
-          font: { size: 10, color: '#2196F3' },
+          font: { size: 10, color: '#569cd6' },
           xanchor: 'left',
           yanchor: 'middle'
         });
@@ -164,7 +180,7 @@ class SmithChart {
           y0: 1/x - Math.sqrt(1 + 1/(x*x)),
           x1: 1,
           y1: 1/x + Math.sqrt(1 + 1/(x*x)),
-          line: { color: '#4CAF50', width: 1, dash: 'dot' },
+          line: { color: '#4ec9b0', width: 1, dash: 'dot' },
           fillcolor: 'transparent'
         });
 
@@ -177,7 +193,7 @@ class SmithChart {
           y0: -1/x - Math.sqrt(1 + 1/(x*x)),
           x1: 1,
           y1: -1/x + Math.sqrt(1 + 1/(x*x)),
-          line: { color: '#F44336', width: 1, dash: 'dot' },
+          line: { color: '#f44747', width: 1, dash: 'dot' },
           fillcolor: 'transparent'
         });
       });
@@ -197,7 +213,7 @@ class SmithChart {
           y0: -radius,
           x1: center + radius,
           y1: radius,
-          line: { color: '#FF9800', width: 1, dash: 'dashdot' },
+          line: { color: '#cca700', width: 1, dash: 'dashdot' },
           fillcolor: 'transparent'
         });
       });
@@ -205,9 +221,9 @@ class SmithChart {
 
     // 标注特殊点
     const specialPoints = [
-      { x: -1, y: 0, text: '短路', color: '#F44336' },
-      { x: 1, y: 0, text: '开路', color: '#4CAF50' },
-      { x: 0, y: 0, text: '匹配', color: '#2196F3' }
+      { x: -1, y: 0, text: 'Short', color: '#f44747' },
+      { x: 1, y: 0, text: 'Open', color: '#4ec9b0' },
+      { x: 0, y: 0, text: 'Match', color: '#569cd6' }
     ];
 
     specialPoints.forEach(point => {

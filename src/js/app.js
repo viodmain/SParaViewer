@@ -9,8 +9,9 @@ const AppState = {
   files: new Map(),        // 已加载的文件
   activeFile: null,        // 当前活动文件
   activeTab: 'magnitude',  // 当前图表标签
-  theme: 'light',          // 主题
-  plotData: null           // 图表数据
+  theme: 'dark',           // 主题 (默认深色)
+  plotData: null,          // 图表数据
+  selectedParams: new Set() // 已选中的S参数
 };
 
 // 初始化Touchstone解析器和TDR计算器
@@ -48,9 +49,9 @@ function initApp() {
   initTheme();
 
   // 更新状态
-  updateStatus('就绪');
+  updateStatus('Ready');
 
-  console.log('SParaViewer 已初始化');
+  console.log('SParaViewer initialized');
 }
 
 /**
@@ -112,7 +113,7 @@ function handleFileInputChange(event) {
  * 加载文件
  */
 async function loadFiles(fileList) {
-  updateStatus('正在加载文件...');
+  updateStatus('Loading files...');
 
   for (const fileInfo of fileList) {
     try {
@@ -145,8 +146,8 @@ async function loadFiles(fileList) {
         selectFile(fileInfo.name);
       }
 
-      updateStatus(`已加载: ${fileInfo.name}`);
-      showToast(`成功加载: ${fileInfo.name}`, 'success');
+      updateStatus(`Loaded: ${fileInfo.name}`);
+      showToast(`Loaded: ${fileInfo.name}`, 'success');
     } catch (error) {
       console.error(`加载文件失败: ${fileInfo.name}`, error);
       showToast(`加载失败: ${error.message}`, 'error');
@@ -173,8 +174,8 @@ function updateFileTree() {
   if (AppState.files.size === 0) {
     DOM.fileTree.innerHTML = `
       <div class="file-tree__empty">
-        <p>暂无文件</p>
-        <p class="hint">点击"打开文件"添加S参数文件</p>
+        <p>No files loaded</p>
+        <p class="hint">Click "Open File" to add S-parameter files</p>
       </div>
     `;
     return;
@@ -188,6 +189,7 @@ function updateFileTree() {
         <span class="icon">📊</span>
         <span class="name">${name}</span>
         <span class="ports">${file.data.numPorts}P</span>
+        <span class="file-tree__close" data-file="${name}" title="Remove">✕</span>
       </div>
     `;
   }
@@ -196,10 +198,52 @@ function updateFileTree() {
 
   // 绑定点击事件
   DOM.fileTree.querySelectorAll('.file-tree__item').forEach(item => {
-    item.addEventListener('click', () => {
+    item.addEventListener('click', (e) => {
+      // 点击关闭按钮时不选中文件
+      if (e.target.classList.contains('file-tree__close')) return;
       selectFile(item.dataset.file);
     });
   });
+
+  // 绑定关闭按钮事件
+  DOM.fileTree.querySelectorAll('.file-tree__close').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      removeFile(btn.dataset.file);
+    });
+  });
+}
+
+/**
+ * 移除文件
+ */
+function removeFile(filename) {
+  AppState.files.delete(filename);
+
+  // 如果移除的是当前活动文件，切换到第一个文件
+  if (AppState.activeFile === filename) {
+    AppState.activeFile = null;
+    const firstFile = AppState.files.keys().next().value;
+    if (firstFile) {
+      selectFile(firstFile);
+    } else {
+      // 没有文件了，清空图表和面板
+      Plotly.purge(DOM.plotContainer);
+      const placeholder = DOM.plotContainer.querySelector('.plot-placeholder');
+      if (placeholder) {
+        placeholder.style.display = '';
+        placeholder.querySelector('p').textContent = 'Open an S-parameter file to start analysis';
+      }
+      DOM.portMapping.innerHTML = '<p class="placeholder">Load a file to view port mapping</p>';
+      DOM.btnExport.disabled = true;
+      DOM.btnCalculateTdr.disabled = true;
+      AppState.plotData = null;
+    }
+  }
+
+  updateFileTree();
+  updateFileInfo();
+  showToast(`Removed: ${filename}`, 'info');
 }
 
 /**
@@ -228,35 +272,43 @@ function selectFile(filename) {
 function updatePortMapping(data) {
   const { numPorts, sParams } = data;
 
-  let html = '<table class="port-mapping-table"><thead><tr><th>参数</th>';
+  // 重置选中参数
+  AppState.selectedParams.clear();
+  // 默认选中 S11 和 S21
+  if (sParams['S11']) AppState.selectedParams.add('S11');
+  if (sParams['S21']) AppState.selectedParams.add('S21');
+
+  let html = '<table class="port-mapping-table"><thead><tr><th>From \\ To</th>';
   for (let j = 1; j <= numPorts; j++) {
     html += `<th>Port ${j}</th>`;
   }
   html += '</tr></thead><tbody>';
 
   for (let i = 1; i <= numPorts; i++) {
-    html += `<tr><td>Port ${i}</td>`;
+    html += `<tr data-row="${i}"><td class="row-header">Port ${i}</td>`;
     for (let j = 1; j <= numPorts; j++) {
-      html += `<td>S${i}${j}</td>`;
+      const param = `S${i}${j}`;
+      const isActive = AppState.selectedParams.has(param);
+      html += `<td class="param-cell ${isActive ? 'active' : ''}" data-param="${param}">${param}</td>`;
     }
     html += '</tr>';
   }
 
   html += '</tbody></table>';
 
-  // 添加参数列表
-  html += '<div class="param-list" style="margin-top: 12px;">';
-  for (const key of Object.keys(sParams)) {
-    html += `<span class="param-tag" data-param="${key}">${key}</span>`;
-  }
-  html += '</div>';
-
   DOM.portMapping.innerHTML = html;
 
-  // 绑定参数点击事件
-  DOM.portMapping.querySelectorAll('.param-tag').forEach(tag => {
-    tag.addEventListener('click', () => {
-      tag.classList.toggle('active');
+  // 绑定单元格点击事件 — 点击切换S参数选中状态
+  DOM.portMapping.querySelectorAll('.param-cell').forEach(cell => {
+    cell.addEventListener('click', () => {
+      const param = cell.dataset.param;
+      if (AppState.selectedParams.has(param)) {
+        AppState.selectedParams.delete(param);
+        cell.classList.remove('active');
+      } else {
+        AppState.selectedParams.add(param);
+        cell.classList.add('active');
+      }
       updatePlot();
     });
   });
@@ -273,22 +325,12 @@ function updatePlot() {
   const { frequencies, sParams, options } = data;
   const scale = DOM.plotScale.value;
 
-  // 获取选中的参数
-  const selectedParams = [];
-  DOM.portMapping.querySelectorAll('.param-tag.active').forEach(tag => {
-    selectedParams.push(tag.dataset.param);
-  });
+  // 隐藏占位符
+  const placeholder = DOM.plotContainer.querySelector('.plot-placeholder');
+  if (placeholder) placeholder.style.display = 'none';
 
-  // 如果没有选中参数，默认选中S11和S21
-  if (selectedParams.length === 0) {
-    selectedParams.push('S11', 'S21');
-    // 更新UI
-    DOM.portMapping.querySelectorAll('.param-tag').forEach(tag => {
-      if (['S11', 'S21'].includes(tag.dataset.param)) {
-        tag.classList.add('active');
-      }
-    });
-  }
+  // 使用 AppState.selectedParams
+  const selectedParams = Array.from(AppState.selectedParams);
 
   // 准备图表数据
   const traces = [];
@@ -318,6 +360,16 @@ function updatePlot() {
     });
   }
 
+  // 如果没有选中参数，显示提示
+  if (traces.length === 0 && AppState.activeTab !== 'smith') {
+    Plotly.purge(DOM.plotContainer);
+    if (placeholder) {
+      placeholder.style.display = '';
+      placeholder.querySelector('p').textContent = 'Select S-parameters from Port Mapping';
+    }
+    return;
+  }
+
   // 图表配置
   const config = {
     responsive: true,
@@ -326,24 +378,37 @@ function updatePlot() {
     displaylogo: false
   };
 
-  // 图表布局
+  // 图表布局 (深色主题适配)
+  const isDark = AppState.theme === 'dark';
+  const isLog = scale === 'log';
   const layout = {
-    title: `${AppState.activeTab === 'magnitude' ? '幅度' : AppState.activeTab === 'phase' ? '相位' : AppState.activeTab === 'vswr' ? 'VSWR' : 'Smith圆图'}`,
+    title: {
+      text: AppState.activeTab === 'magnitude' ? 'Magnitude' : AppState.activeTab === 'phase' ? 'Phase' : AppState.activeTab === 'vswr' ? 'VSWR' : 'Smith Chart',
+      font: { color: isDark ? '#cccccc' : '#333333' }
+    },
     xaxis: {
-      title: '频率 (GHz)',
-      showgrid: true
+      title: 'Frequency (GHz)',
+      type: isLog ? 'log' : 'linear',
+      showgrid: true,
+      gridcolor: isDark ? '#3c3c3c' : '#e0e0e0',
+      color: isDark ? '#969696' : '#616161'
     },
     yaxis: {
       title: getYAxisTitle(),
-      showgrid: true
+      showgrid: true,
+      gridcolor: isDark ? '#3c3c3c' : '#e0e0e0',
+      color: isDark ? '#969696' : '#616161'
     },
     margin: { t: 40, r: 20, b: 50, l: 60 },
     showlegend: true,
     legend: {
       x: 1,
       y: 1,
-      xanchor: 'right'
-    }
+      xanchor: 'right',
+      font: { color: isDark ? '#cccccc' : '#333333' }
+    },
+    paper_bgcolor: isDark ? '#1e1e1e' : '#ffffff',
+    plot_bgcolor: isDark ? '#1e1e1e' : '#ffffff'
   };
 
   // 渲染图表
@@ -364,9 +429,9 @@ function getYAxisTitle() {
   const scale = DOM.plotScale.value;
   switch (AppState.activeTab) {
     case 'magnitude':
-      return scale === 'dB' ? '幅度 (dB)' : '幅度 (线性)';
+      return scale === 'dB' ? 'Magnitude (dB)' : 'Magnitude (Linear)';
     case 'phase':
-      return '相位 (度)';
+      return 'Phase (deg)';
     case 'vswr':
       return 'VSWR';
     default:
@@ -449,7 +514,7 @@ function handleScaleChange() {
 function handleCalculateTDR() {
   const file = AppState.files.get(AppState.activeFile);
   if (!file) {
-    showToast('请先加载S参数文件', 'warning');
+    showToast('Please load an S-parameter file first', 'warning');
     return;
   }
 
@@ -457,7 +522,7 @@ function handleCalculateTDR() {
   const riseTime = parseFloat(DOM.riseTime.value) * 1e-12; // 转换为秒
   const impedance = parseFloat(DOM.impedance.value);
 
-  updateStatus(`正在计算 ${tdrType.toUpperCase()}...`);
+  updateStatus(`Calculating ${tdrType.toUpperCase()}...`);
 
   try {
     const config = {
@@ -480,12 +545,12 @@ function handleCalculateTDR() {
     const report = tdrCalculator.generateReport(result);
     console.log(report);
 
-    showToast(`${tdrType.toUpperCase()} 计算完成`, 'success');
-    updateStatus('就绪');
+    showToast(`${tdrType.toUpperCase()} calculation complete`, 'success');
+    updateStatus('Ready');
   } catch (error) {
-    console.error('TDR计算失败:', error);
-    showToast(`计算失败: ${error.message}`, 'error');
-    updateStatus('计算失败');
+    console.error('TDR calculation failed:', error);
+    showToast(`Calculation failed: ${error.message}`, 'error');
+    updateStatus('Calculation failed');
   }
 }
 
@@ -498,6 +563,7 @@ function displayTDRResult(result) {
   // 转换时间单位为ps
   const timeInPs = time.map(t => t * 1e12);
 
+  const isDark = AppState.theme === 'dark';
   const trace = {
     x: timeInPs,
     y: response,
@@ -505,21 +571,30 @@ function displayTDRResult(result) {
     mode: 'lines',
     name: type.toUpperCase(),
     line: {
-      color: type === 'tdr' ? '#2196F3' : '#4CAF50',
+      color: type === 'tdr' ? '#569cd6' : '#4ec9b0',
       width: 2
     }
   };
 
   const layout = {
-    title: `${type.toUpperCase()} 响应`,
+    title: {
+      text: `${type.toUpperCase()} Response`,
+      font: { color: isDark ? '#cccccc' : '#333333' }
+    },
     xaxis: {
-      title: '时间 (ps)',
-      showgrid: true
+      title: 'Time (ps)',
+      showgrid: true,
+      gridcolor: isDark ? '#3c3c3c' : '#e0e0e0',
+      color: isDark ? '#969696' : '#616161'
     },
     yaxis: {
-      title: type === 'tdr' ? '阻抗 (Ω)' : '响应幅度',
-      showgrid: true
+      title: type === 'tdr' ? 'Impedance (Ω)' : 'Response',
+      showgrid: true,
+      gridcolor: isDark ? '#3c3c3c' : '#e0e0e0',
+      color: isDark ? '#969696' : '#616161'
     },
+    paper_bgcolor: isDark ? '#1e1e1e' : '#ffffff',
+    plot_bgcolor: isDark ? '#1e1e1e' : '#ffffff',
     margin: { t: 40, r: 20, b: 50, l: 60 },
     showlegend: true
   };
@@ -551,7 +626,7 @@ function displayTDRResult(result) {
  */
 async function handleExportChart() {
   if (!AppState.plotData) {
-    showToast('没有可导出的图表', 'warning');
+    showToast('No chart to export', 'warning');
     return;
   }
 
@@ -587,9 +662,9 @@ async function handleExportChart() {
           await window.electronAPI.writeFile(filePath, base64Data, 'base64');
         }
 
-        showToast('图表已导出', 'success');
+        showToast('Chart exported', 'success');
       } catch (error) {
-        showToast('导出失败: ' + error.message, 'error');
+        showToast('Export failed: ' + error.message, 'error');
       }
     }
   } else {
@@ -644,7 +719,7 @@ async function exportCSV(filePath) {
  * 初始化主题
  */
 function initTheme() {
-  const savedTheme = localStorage.getItem('theme') || 'light';
+  const savedTheme = localStorage.getItem('theme') || 'dark';
   setTheme(savedTheme);
 }
 
@@ -654,6 +729,10 @@ function initTheme() {
 function toggleTheme() {
   const newTheme = AppState.theme === 'light' ? 'dark' : 'light';
   setTheme(newTheme);
+  // 切换主题后重绘图表以适配新配色
+  if (AppState.activeFile) {
+    updatePlot();
+  }
 }
 
 /**
@@ -666,6 +745,12 @@ function setTheme(theme) {
 
   // 更新图标
   DOM.btnTheme.textContent = theme === 'light' ? '🌙' : '☀️';
+  // 更新setting bar背景色
+  const settingBar = document.querySelector('.setting-bar');
+  if (settingBar) {
+    settingBar.style.backgroundColor = theme === 'dark' ? '#323233' : '#0078d4';
+    settingBar.style.color = theme === 'dark' ? '#cccccc' : '#ffffff';
+  }
 }
 
 /**
@@ -680,7 +765,7 @@ function updateStatus(text) {
  */
 function updateFileInfo() {
   const count = AppState.files.size;
-  DOM.fileInfo.textContent = count > 0 ? `已加载 ${count} 个文件` : '未加载文件';
+  DOM.fileInfo.textContent = count > 0 ? `${count} file(s) loaded` : 'No file loaded';
 }
 
 /**
@@ -711,5 +796,80 @@ function showToast(message, type = 'info') {
   }, 3000);
 }
 
+/**
+ * 初始化面板拖拽调整大小
+ */
+function initResize() {
+  const explorePanel = document.getElementById('explore-panel');
+  const centerArea = document.querySelector('.center-area');
+  const plotArea = document.querySelector('.plot-area');
+  const bottomPanels = document.getElementById('bottom-panels');
+  const resizeExplore = document.getElementById('resize-explore');
+  const resizePlot = document.getElementById('resize-plot');
+
+  // Explore 面板 <-> Center Area 水平拖拽
+  let isResizingExplore = false;
+  resizeExplore.addEventListener('mousedown', (e) => {
+    isResizingExplore = true;
+    resizeExplore.classList.add('active');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+
+  // Plot Area <-> Bottom Panels 垂直拖拽
+  let isResizingPlot = false;
+  resizePlot.addEventListener('mousedown', (e) => {
+    isResizingPlot = true;
+    resizePlot.classList.add('active');
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (isResizingExplore) {
+      const newWidth = Math.max(150, Math.min(500, e.clientX));
+      explorePanel.style.width = newWidth + 'px';
+    }
+    if (isResizingPlot) {
+      const mainContent = document.querySelector('.main-content');
+      const mainRect = mainContent.getBoundingClientRect();
+      const offsetFromTop = e.clientY - mainRect.top;
+      const totalHeight = mainRect.height;
+      const plotHeight = Math.max(200, Math.min(totalHeight - 120, offsetFromTop));
+      const bottomHeight = totalHeight - plotHeight - 4; // 4 = handle height
+      plotArea.style.flex = 'none';
+      plotArea.style.height = plotHeight + 'px';
+      bottomPanels.style.height = Math.max(100, bottomHeight) + 'px';
+    }
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (isResizingExplore) {
+      isResizingExplore = false;
+      resizeExplore.classList.remove('active');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      // 触发 Plotly 自适应
+      if (window.Plotly) {
+        Plotly.Plots.resize(DOM.plotContainer);
+      }
+    }
+    if (isResizingPlot) {
+      isResizingPlot = false;
+      resizePlot.classList.remove('active');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      if (window.Plotly) {
+        Plotly.Plots.resize(DOM.plotContainer);
+      }
+    }
+  });
+}
+
 // 初始化应用
-document.addEventListener('DOMContentLoaded', initApp);
+document.addEventListener('DOMContentLoaded', () => {
+  initApp();
+  initResize();
+});

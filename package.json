@@ -1,6 +1,6 @@
 {
   "name": "sparaviewer",
-  "version": "1.0.0",
+  "version": "1.0.5",
   "description": "S参数后处理软件 - 支持Touchstone格式文件解析、TDR/TDT计算、Smith圆图等功能",
   "main": "src/main.js",
   "scripts": {
@@ -22,6 +22,9 @@
     "plotly.js-dist-min": "^2.28.0"
   },
   "build": {
+    "electronDownload": {
+      "mirror": "https://npmmirror.com/mirrors/electron/"
+    },
     "appId": "com.sparaviewer.app",
     "productName": "SParaViewer",
     "directories": {
@@ -39,7 +42,7 @@
           "arch": ["x64"]
         }
       ],
-      "icon": "assets/icon.svg"
+      "icon": "assets/icon.ico"
     },
     "nsis": {
       "oneClick": false,
@@ -47,9 +50,9 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "SParaViewer",
-      "installerIcon": "assets/icon.svg",
-      "uninstallerIcon": "assets/icon.svg",
-      "installerHeaderIcon": "assets/icon.svg",
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico",
       "license": "LICENSE"
     }
   }

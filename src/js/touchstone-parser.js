@@ -173,7 +173,7 @@ class TouchstoneParser {
   }
 
   /**
-   * 解析数据行
+   * 解析数据行（支持多行续行，Touchstone 格式允许每个频率点的数据跨多行）
    */
   parseData(lines, startIndex, numPorts, options) {
     const frequencies = [];
@@ -186,10 +186,12 @@ class TouchstoneParser {
       }
     }
 
-    // 计算每行期望的数据点数
-    const valuesPerLine = 1 + numPorts * numPorts * 2; // 频率 + 每个S参数的实部和虚部
+    // 每个频率点期望的数值总数: 1频率 + N*N*2(实部+虚部)
+    const valuesPerFreq = 1 + numPorts * numPorts * 2;
 
-    // 解析数据行
+    // 累积值缓冲区
+    let pendingValues = [];
+
     for (let i = startIndex; i < lines.length; i++) {
       const line = lines[i];
 
@@ -203,31 +205,31 @@ class TouchstoneParser {
         continue;
       }
 
-      // 解析数值
+      // 解析当前行的数值
       const values = this.parseLineValues(line);
+      if (values.length === 0) continue;
 
-      // 验证数据完整性
-      if (values.length < valuesPerLine) {
-        console.warn(`第${i + 1}行数据不完整，期望${valuesPerLine}个值，实际${values.length}个`);
-        continue;
-      }
+      pendingValues.push(...values);
 
-      // 提取频率
-      const freq = values[0];
-      frequencies.push(freq);
+      // 检查是否累积够一个完整的频率点
+      while (pendingValues.length >= valuesPerFreq) {
+        const freq = pendingValues[0];
+        frequencies.push(freq);
 
-      // 提取S参数
-      let idx = 1;
-      for (let p1 = 1; p1 <= numPorts; p1++) {
-        for (let p2 = 1; p2 <= numPorts; p2++) {
-          const real = values[idx++];
-          const imag = values[idx++];
-          const key = `S${p1}${p2}`;
-
-          if (sParams[key]) {
-            sParams[key].push({ real, imag });
+        let idx = 1;
+        for (let p1 = 1; p1 <= numPorts; p1++) {
+          for (let p2 = 1; p2 <= numPorts; p2++) {
+            const real = pendingValues[idx++];
+            const imag = pendingValues[idx++];
+            const key = `S${p1}${p2}`;
+            if (sParams[key]) {
+              sParams[key].push({ real, imag });
+            }
           }
         }
+
+        // 移除已处理的值
+        pendingValues = pendingValues.slice(valuesPerFreq);
       }
     }
 
