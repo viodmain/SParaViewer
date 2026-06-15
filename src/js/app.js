@@ -555,10 +555,14 @@ function handleCalculateTDR() {
 }
 
 /**
- * 显示TDR/TDT计算结果
+ * 显示TDR/TDT计算结果（在主 Plot 区域）
  */
 function displayTDRResult(result) {
   const { type, time, response, config } = result;
+
+  // 隐藏占位符
+  const placeholder = DOM.plotContainer.querySelector('.plot-placeholder');
+  if (placeholder) placeholder.style.display = 'none';
 
   // 转换时间单位为ps
   const timeInPs = time.map(t => t * 1e12);
@@ -596,7 +600,10 @@ function displayTDRResult(result) {
     paper_bgcolor: isDark ? '#1e1e1e' : '#ffffff',
     plot_bgcolor: isDark ? '#1e1e1e' : '#ffffff',
     margin: { t: 40, r: 20, b: 50, l: 60 },
-    showlegend: true
+    showlegend: true,
+    legend: {
+      font: { color: isDark ? '#cccccc' : '#333333' }
+    }
   };
 
   const plotConfig = {
@@ -606,19 +613,11 @@ function displayTDRResult(result) {
     displaylogo: false
   };
 
-  // 在TDR面板中显示图表
-  const tdrContainer = document.getElementById('tdr-calculate');
-  let chartDiv = tdrContainer.querySelector('.tdr-chart');
+  // 在主 Plot 区域显示图表
+  Plotly.newPlot(DOM.plotContainer, [trace], layout, plotConfig);
 
-  if (!chartDiv) {
-    chartDiv = document.createElement('div');
-    chartDiv.className = 'tdr-chart';
-    chartDiv.style.width = '100%';
-    chartDiv.style.height = '200px';
-    tdrContainer.appendChild(chartDiv);
-  }
-
-  Plotly.newPlot(chartDiv, [trace], layout, plotConfig);
+  // 存储图表数据（支持导出）
+  AppState.plotData = { traces: [trace], layout, config: plotConfig };
 }
 
 /**
