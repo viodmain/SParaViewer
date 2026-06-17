@@ -23,10 +23,10 @@ class SmithChart {
       showReactanceCircles = true
     } = options;
 
-    // 自适应容器大小
+    // 容器已由外部设为正方形，直接使用
     const rect = this.container.getBoundingClientRect();
-    const width = Math.max(rect.width, 300);
-    const height = Math.max(rect.height, 200);
+    const width = rect.width || 500;
+    const height = rect.height || 500;
 
     // 清空之前的图形
     this.shapes = [];
@@ -64,8 +64,7 @@ class SmithChart {
         showgrid: false,
         zeroline: true,
         zerolinecolor: gridColor,
-        scaleanchor: 'y',
-        scaleratio: 1,
+        constrain: 'domain',
         color: textColor
       },
       yaxis: {
@@ -74,6 +73,8 @@ class SmithChart {
         showgrid: false,
         zeroline: true,
         zerolinecolor: gridColor,
+        scaleanchor: 'x',
+        scaleratio: 1,
         color: textColor
       },
       margin: { t: 50, r: 30, b: 50, l: 50 },
