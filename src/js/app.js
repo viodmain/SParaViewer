@@ -33,6 +33,8 @@ const DOM = {
   riseTime: document.getElementById('rise-time'),
   impedance: document.getElementById('impedance'),
   btnCalculateTdr: document.getElementById('btn-calculate-tdr'),
+  btnAnalyzeSnp: document.getElementById('btn-analyze-snp'),
+  snpResults: document.getElementById('snp-results'),
   statusText: document.getElementById('status-text'),
   fileInfo: document.getElementById('file-info'),
   memoryUsage: document.getElementById('memory-usage')
@@ -76,6 +78,9 @@ function bindEvents() {
 
   // TDR计算
   DOM.btnCalculateTdr.addEventListener('click', handleCalculateTDR);
+
+  // S-Parameter Validation
+  DOM.btnAnalyzeSnp.addEventListener('click', handleAnalyzeSnp);
 }
 
 /**
@@ -237,6 +242,7 @@ function removeFile(filename) {
       DOM.portMapping.innerHTML = '<p class="placeholder">Load a file to view port mapping</p>';
       DOM.btnExport.disabled = true;
       DOM.btnCalculateTdr.disabled = true;
+      DOM.btnAnalyzeSnp.disabled = true;
       AppState.plotData = null;
     }
   }
@@ -263,6 +269,7 @@ function selectFile(filename) {
     // 启用按钮
     DOM.btnExport.disabled = false;
     DOM.btnCalculateTdr.disabled = false;
+    DOM.btnAnalyzeSnp.disabled = false;
   }
 }
 
@@ -415,6 +422,9 @@ function updatePlot() {
   if (AppState.activeTab === 'smith') {
     renderSmithChart(traces);
   } else {
+    // 恢复容器大小（Smith 圆图会修改为正方形）
+    DOM.plotContainer.style.width = '';
+    DOM.plotContainer.style.height = '';
     Plotly.newPlot(DOM.plotContainer, traces, layout, config);
   }
 
@@ -446,7 +456,7 @@ function renderSmithChart(traces) {
   if (!traces || traces.length === 0) {
     DOM.plotContainer.innerHTML = `
       <div class="plot-placeholder">
-        <p>请先选择S参数</p>
+        <p>Select S-parameters from Port Mapping</p>
       </div>
     `;
     return;
@@ -454,6 +464,12 @@ function renderSmithChart(traces) {
 
   const file = AppState.files.get(AppState.activeFile);
   if (!file) return;
+
+  // 强制容器为正方形（Smith 圆图需要等比例坐标）
+  const rect = DOM.plotContainer.getBoundingClientRect();
+  const size = Math.min(rect.width, rect.height);
+  DOM.plotContainer.style.width = size + 'px';
+  DOM.plotContainer.style.height = size + 'px';
 
   // 准备Smith圆图数据
   const smithTraces = [];
@@ -618,6 +634,125 @@ function displayTDRResult(result) {
 
   // 存储图表数据（支持导出）
   AppState.plotData = { traces: [trace], layout, config: plotConfig };
+}
+
+/**
+ * 处理 S-Parameter Validation 分析
+ */
+function handleAnalyzeSnp() {
+  const file = AppState.files.get(AppState.activeFile);
+  if (!file) {
+    showToast('Please load an S-parameter file first', 'warning');
+    return;
+  }
+
+  updateStatus('Analyzing S-parameters...');
+  DOM.btnAnalyzeSnp.disabled = true;
+
+  // Use setTimeout to allow UI to update before heavy computation
+  setTimeout(() => {
+    try {
+      const result = SNPValidator.analyze(file.data);
+      displaySnpResults(result);
+      showToast('Analysis complete', 'success');
+      updateStatus('Ready');
+    } catch (error) {
+      console.error('S-parameter analysis failed:', error);
+      showToast('Analysis failed: ' + error.message, 'error');
+      updateStatus('Analysis failed');
+    }
+    DOM.btnAnalyzeSnp.disabled = false;
+  }, 50);
+}
+
+/**
+ * 显示 S-Parameter Validation 结果
+ */
+function displaySnpResults(result) {
+  const { passivity, reciprocity, causality, overallPass } = result;
+
+  // Build causality top-5 worst
+  const causalitySorted = Object.entries(causality.details)
+    .sort((a, b) => b[1].ratio - a[1].ratio)
+    .slice(0, 5);
+
+  const causalityTable = causalitySorted.map(([param, d]) =>
+    `<tr><td>${param}</td><td>${(d.ratio * 100).toFixed(2)}%</td><td class="${d.causal ? '' : 'val-bad'}">${d.causal ? 'OK' : 'FAIL'}</td></tr>`
+  ).join('');
+
+  // Reciprocity details: per-pair max diff
+  const file = AppState.files.get(AppState.activeFile);
+  const nP = file.data.numPorts;
+  let reciprocityRows = '';
+  for (let i = 1; i <= nP; i++) {
+    for (let j = i + 1; j <= nP; j++) {
+      const aKey = `S${i}${j}`, bKey = `S${j}${i}`;
+      const aVals = file.data.sParams[aKey];
+      const bVals = file.data.sParams[bKey];
+      let maxD = 0, maxF = 0;
+      for (let k = 0; k < aVals.length; k++) {
+        const d = Math.sqrt((aVals[k].real - bVals[k].real) ** 2 + (aVals[k].imag - bVals[k].imag) ** 2);
+        if (d > maxD) { maxD = d; maxF = file.data.frequencies[k]; }
+      }
+      const bad = maxD > reciprocity.tolerance;
+      reciprocityRows += `<tr><td>${aKey}/${bKey}</td><td class="${bad ? 'val-bad' : ''}">${maxD.toFixed(6)}</td><td>${(maxF / 1e6).toFixed(2)} MHz</td></tr>`;
+    }
+  }
+
+  DOM.snpResults.innerHTML = `
+    <div class="snp-check-row" data-detail="detail-passivity">
+      <span class="snp-check-badge ${passivity.pass ? 'snp-check-badge--pass' : 'snp-check-badge--fail'}">${passivity.pass ? '✓' : '✗'}</span>
+      <span class="snp-check-label">Passivity</span>
+      <span class="snp-check-metric">σ_max=${passivity.maxSV.toFixed(6)}</span>
+    </div>
+    <div class="snp-check-detail" id="detail-passivity">
+      <table>
+        <tr><td>Max singular value</td><td>${passivity.maxSV.toFixed(8)}</td></tr>
+        <tr><td>Violations</td><td class="${passivity.pass ? '' : 'val-bad'}">${passivity.violations} / ${file.data.frequencies.length} (${passivity.violationPct}%)</td></tr>
+        ${passivity.pass ? '' : `<tr><td>Worst freq</td><td>${passivity.worstFreq}</td></tr>`}
+      </table>
+    </div>
+
+    <div class="snp-check-row" data-detail="detail-reciprocity">
+      <span class="snp-check-badge ${reciprocity.pass ? 'snp-check-badge--pass' : 'snp-check-badge--fail'}">${reciprocity.pass ? '✓' : '✗'}</span>
+      <span class="snp-check-label">Reciprocity</span>
+      <span class="snp-check-metric">max Δ=${reciprocity.maxDiff.toFixed(4)}</span>
+    </div>
+    <div class="snp-check-detail" id="detail-reciprocity">
+      <table>
+        <tr><td>Tolerance</td><td>${reciprocity.tolerance}</td></tr>
+        <tr><td>Violations</td><td class="${reciprocity.pass ? '' : 'val-bad'}">${reciprocity.violations} pairs</td></tr>
+        <tr><td colspan="3" style="padding-top:4px;font-weight:600;">Per-pair max |Sij-Sji|:</td></tr>
+        ${reciprocityRows}
+      </table>
+    </div>
+
+    <div class="snp-check-row" data-detail="detail-causality">
+      <span class="snp-check-badge ${causality.pass ? 'snp-check-badge--pass' : 'snp-check-badge--fail'}">${causality.pass ? '✓' : '✗'}</span>
+      <span class="snp-check-label">Causality</span>
+      <span class="snp-check-metric">${causality.pass ? 'All OK' : 'Has violations'}</span>
+    </div>
+    <div class="snp-check-detail" id="detail-causality">
+      <table>
+        <tr><td>Negative-time energy ratio (top 5):</td></tr>
+        <tr><td><b>Param</b></td><td><b>Ratio</b></td><td><b>Status</b></td></tr>
+        ${causalityTable}
+      </table>
+    </div>
+
+    <div style="margin-top: 8px; font-weight: 600; color: ${overallPass ? 'var(--color-success)' : 'var(--color-danger)'}">
+      Overall: ${overallPass ? 'ALL PASS ✓' : 'HAS FAILURES ✗'}
+    </div>
+  `;
+
+  // Bind expand/collapse on check rows
+  DOM.snpResults.querySelectorAll('.snp-check-row').forEach(row => {
+    row.addEventListener('click', () => {
+      const detailId = row.dataset.detail;
+      const detail = document.getElementById(detailId);
+      if (detail) detail.classList.toggle('expanded');
+    });
+  });
 }
 
 /**
